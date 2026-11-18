@@ -38,6 +38,11 @@ public class ScenarioEvaluator {
     }
 
     private boolean isTriggered(ScenarioDefinition scenario, Map<String, SensorStateAvro> states) {
+        if (scenario.conditions().isEmpty()) {
+            // Сценарий без условий не является корректным предикатом и не должен
+            // срабатывать автоматически.
+            return false;
+        }
         return scenario.conditions().stream()
                 .allMatch(condition -> matches(condition, states));
     }
