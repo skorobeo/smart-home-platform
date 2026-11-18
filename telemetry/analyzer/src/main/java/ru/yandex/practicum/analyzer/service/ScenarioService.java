@@ -32,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -83,9 +84,16 @@ public class ScenarioService {
 
         Set<String> uniqueSensorIds = new LinkedHashSet<>(sensorIds);
         for (String sensorId : uniqueSensorIds) {
-            if (sensorRepository.findByIdAndHubId(sensorId, hubId).isEmpty()) {
-                log.warn("Сценарий '{}' хаба {} пропущен: датчик {} не найден",
-                        event.getName(), hubId, sensorId);
+            Optional<Sensor> existing = sensorRepository.findById(sensorId);
+            if (existing.isEmpty()) {
+                // Сценарий может прийти раньше события регистрации устройства.
+                // Сохраняем датчик, чтобы не потерять пользовательский сценарий.
+                sensorRepository.saveAndFlush(new Sensor(sensorId, hubId));
+                log.info("Датчик {} создан по событию сценария '{}' хаба {}",
+                        sensorId, event.getName(), hubId);
+            } else if (!Objects.equals(existing.get().getHubId(), hubId)) {
+                log.warn("Сценарий '{}' хаба {} пропущен: датчик {} принадлежит хабу {}",
+                        event.getName(), hubId, sensorId, existing.get().getHubId());
                 return;
             }
         }

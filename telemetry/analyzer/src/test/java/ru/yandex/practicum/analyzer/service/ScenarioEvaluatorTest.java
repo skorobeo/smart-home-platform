@@ -71,6 +71,23 @@ class ScenarioEvaluatorTest {
         assertThat(requests).isEmpty();
     }
 
+    @Test
+    void shouldNotTriggerScenarioWithoutConditions() {
+        SensorsSnapshotAvro snapshot = snapshot(
+                climateState(10),
+                lightState(100));
+
+        ScenarioDefinition scenario = new ScenarioDefinition(
+                "hub-1",
+                "Сценарий без условий",
+                List.of(),
+                List.of(new ActionDefinition("socket-1", ActionType.ACTIVATE, null)));
+
+        List<DeviceActionRequest> requests = evaluator.evaluate(snapshot, List.of(scenario));
+
+        assertThat(requests).isEmpty();
+    }
+
     private SensorsSnapshotAvro snapshot(SensorStateAvro climate, SensorStateAvro light) {
         return SensorsSnapshotAvro.newBuilder()
                 .setHubId("hub-1")
