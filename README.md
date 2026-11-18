@@ -141,6 +141,10 @@ mvn -pl telemetry/aggregator -am spring-boot:run
 mvn -pl telemetry/analyzer -am spring-boot:run
 ```
 
+> Если на порту `5432` уже запущен локальный PostgreSQL, освободите порт
+> (остановите локальную службу) или измените публикуемый порт в `docker-compose.yml`
+> и `spring.datasource.url` в `telemetry/analyzer/src/main/resources/application.yml`.
+
 После запуска всех трёх сервисов можно запустить эмулятор Hub Router:
 
 ```bash
