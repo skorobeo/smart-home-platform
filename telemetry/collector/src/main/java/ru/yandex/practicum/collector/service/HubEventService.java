@@ -10,6 +10,9 @@ import ru.yandex.practicum.collector.dto.hub.HubEvent;
 import ru.yandex.practicum.collector.mapper.HubEventMapper;
 import ru.yandex.practicum.kafka.telemetry.event.HubEventAvro;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -20,15 +23,23 @@ public class HubEventService {
     private final KafkaTopics kafkaTopics;
 
     public void collectHubEvent(HubEvent event) {
+        sendHubEvent(event);
+    }
+
+    /**
+     * Отправляет событие хаба в Kafka и возвращает future, который завершается
+     * после подтверждения записи брокером.
+     */
+    public CompletableFuture<Void> sendHubEvent(HubEvent event) {
         HubEventAvro avro = hubEventMapper.toAvro(event);
         String topic = kafkaTopics.getHubs();
-        kafkaTemplate.send(topic, event.getHubId(), avro)
-                .whenComplete((result, exception) -> {
-                    if (exception != null) {
-                        log.error("Не удалось отправить событие хаба {} в топик {}", event.getHubId(), topic, exception);
-                    } else {
-                        log.info("Событие хаба {} отправлено в топик {}", event.getHubId(), topic);
-                    }
+        return kafkaTemplate.send(topic, event.getHubId(), avro)
+                .thenAccept(result ->
+                        log.info("Событие хаба {} отправлено в топик {}", event.getHubId(), topic))
+                .exceptionally(exception -> {
+                    log.error("Не удалось отправить событие хаба {} в топик {}",
+                            event.getHubId(), topic, exception);
+                    throw new CompletionException(exception);
                 });
     }
 }
