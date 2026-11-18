@@ -13,10 +13,16 @@ import ru.yandex.practicum.grpc.telemetry.collector.CollectorControllerGrpc;
 import ru.yandex.practicum.grpc.telemetry.event.HubEventProto;
 import ru.yandex.practicum.grpc.telemetry.event.SensorEventProto;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 @Slf4j
 @GrpcService
 @RequiredArgsConstructor
 public class CollectorGrpcController extends CollectorControllerGrpc.CollectorControllerImplBase {
+
+    private static final long SEND_TIMEOUT_SECONDS = 10;
 
     private final SensorEventService sensorEventService;
     private final HubEventService hubEventService;
@@ -25,9 +31,29 @@ public class CollectorGrpcController extends CollectorControllerGrpc.CollectorCo
     @Override
     public void collectSensorEvent(SensorEventProto request, StreamObserver<Empty> responseObserver) {
         try {
-            sensorEventService.collectSensorEvent(protoEventMapper.toDto(request));
+            sensorEventService.sendSensorEvent(protoEventMapper.toDto(request))
+                    .get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             responseObserver.onNext(Empty.getDefaultInstance());
             responseObserver.onCompleted();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Отправка события датчика {} прервана", request.getId(), e);
+            responseObserver.onError(Status.ABORTED
+                    .withDescription("Отправка события датчика прервана")
+                    .withCause(e)
+                    .asRuntimeException());
+        } catch (ExecutionException e) {
+            log.error("Не удалось отправить событие датчика {}", request.getId(), e);
+            responseObserver.onError(Status.INTERNAL
+                    .withDescription("Не удалось сохранить событие датчика в Kafka")
+                    .withCause(e.getCause())
+                    .asRuntimeException());
+        } catch (TimeoutException e) {
+            log.error("Истекло время ожидания записи события датчика {}", request.getId(), e);
+            responseObserver.onError(Status.DEADLINE_EXCEEDED
+                    .withDescription("Истекло время ожидания записи события датчика в Kafka")
+                    .withCause(e)
+                    .asRuntimeException());
         } catch (Exception e) {
             log.error("Не удалось обработать событие датчика {}", request.getId(), e);
             responseObserver.onError(Status.INVALID_ARGUMENT
@@ -40,9 +66,29 @@ public class CollectorGrpcController extends CollectorControllerGrpc.CollectorCo
     @Override
     public void collectHubEvent(HubEventProto request, StreamObserver<Empty> responseObserver) {
         try {
-            hubEventService.collectHubEvent(protoEventMapper.toDto(request));
+            hubEventService.sendHubEvent(protoEventMapper.toDto(request))
+                    .get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             responseObserver.onNext(Empty.getDefaultInstance());
             responseObserver.onCompleted();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Отправка события хаба {} прервана", request.getHubId(), e);
+            responseObserver.onError(Status.ABORTED
+                    .withDescription("Отправка события хаба прервана")
+                    .withCause(e)
+                    .asRuntimeException());
+        } catch (ExecutionException e) {
+            log.error("Не удалось отправить событие хаба {}", request.getHubId(), e);
+            responseObserver.onError(Status.INTERNAL
+                    .withDescription("Не удалось сохранить событие хаба в Kafka")
+                    .withCause(e.getCause())
+                    .asRuntimeException());
+        } catch (TimeoutException e) {
+            log.error("Истекло время ожидания записи события хаба {}", request.getHubId(), e);
+            responseObserver.onError(Status.DEADLINE_EXCEEDED
+                    .withDescription("Истекло время ожидания записи события хаба в Kafka")
+                    .withCause(e)
+                    .asRuntimeException());
         } catch (Exception e) {
             log.error("Не удалось обработать событие хаба {}", request.getHubId(), e);
             responseObserver.onError(Status.INVALID_ARGUMENT
