@@ -1,0 +1,49 @@
+@namespace("ru.yandex.practicum.kafka.telemetry.event")
+protocol SensorsSnapshotProtocol {
+
+    record ClimateSensorAvro {
+        int temperature_c;
+        int humidity;
+        int co2_level;
+    }
+
+    record LightSensorAvro {
+        int link_quality;
+        int luminosity;
+    }
+
+    record MotionSensorAvro {
+        int link_quality;
+        boolean motion;
+        int voltage;
+    }
+
+    record SwitchSensorAvro {
+        boolean state;
+    }
+
+    record TemperatureSensorAvro {
+        string id;
+        string hubId;
+        @logicalType("timestamp-millis") long timestamp;
+        int temperature_c;
+        int temperature_f;
+    }
+
+    record SensorStateAvro {
+        @logicalType("timestamp-millis") long timestamp;
+        union {
+            ClimateSensorAvro,
+            LightSensorAvro,
+            MotionSensorAvro,
+            SwitchSensorAvro,
+            TemperatureSensorAvro
+        } data;
+    }
+
+    record SensorsSnapshotAvro {
+        string hubId;
+        @logicalType("timestamp-millis") long timestamp;
+        map<SensorStateAvro> sensorsState;
+    }
+}
