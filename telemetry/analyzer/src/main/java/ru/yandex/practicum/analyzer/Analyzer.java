@@ -17,15 +17,23 @@ public class Analyzer {
         HubEventProcessor hubEventProcessor = context.getBean(HubEventProcessor.class);
         SnapshotProcessor snapshotProcessor = context.getBean(SnapshotProcessor.class);
 
-        Thread hubEventsThread = new Thread(hubEventProcessor);
-        hubEventsThread.setName("HubEventHandlerThread");
+        Thread hubEventsThread = new Thread(hubEventProcessor, "HubEventHandlerThread");
+        Thread snapshotsThread = new Thread(snapshotProcessor, "SnapshotProcessorThread");
         hubEventsThread.start();
+        snapshotsThread.start();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             snapshotProcessor.stop();
             hubEventProcessor.stop();
         }, "AnalyzerShutdownHook"));
 
-        snapshotProcessor.start();
+        try {
+            hubEventsThread.join();
+            snapshotsThread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            snapshotProcessor.stop();
+            hubEventProcessor.stop();
+        }
     }
 }
