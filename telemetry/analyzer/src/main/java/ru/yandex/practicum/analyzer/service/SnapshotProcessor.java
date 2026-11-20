@@ -47,7 +47,11 @@ public class SnapshotProcessor implements Runnable {
                 ConsumerRecords<String, SensorsSnapshotAvro> records = consumer.poll(
                         Duration.ofMillis(properties.getSnapshotConsumer().getPollTimeout()));
                 for (ConsumerRecord<String, SensorsSnapshotAvro> record : records) {
-                    process(record);
+                    if (!process(record)) {
+                        // Не фиксируем смещение и прерываем обработку батча:
+                        // после seek следующая итерация poll снова получит этот снапшот.
+                        break;
+                    }
                 }
             }
         } catch (WakeupException e) {
@@ -67,11 +71,11 @@ public class SnapshotProcessor implements Runnable {
         }
     }
 
-    private void process(ConsumerRecord<String, SensorsSnapshotAvro> record) {
+    private boolean process(ConsumerRecord<String, SensorsSnapshotAvro> record) {
         SensorsSnapshotAvro snapshot = record.value();
         if (snapshot == null) {
             commit(record);
-            return;
+            return true;
         }
 
         try {
@@ -86,12 +90,24 @@ public class SnapshotProcessor implements Runnable {
                             snapshot.getHubId(), requests.size());
                 }
             }
-        } catch (Exception e) {
-            log.error("Не удалось обработать снапшот хаба {}", snapshot.getHubId(), e);
-        } finally {
-            // Смещение фиксируем после обработки, чтобы не обрабатывать снапшот повторно
-            // при перезапуске сервиса.
             commit(record);
+            return true;
+        } catch (Exception e) {
+            log.error("Не удалось обработать снапшот хаба {}. "
+                    + "Смещение не фиксируется, снапшот будет обработан повторно",
+                    snapshot.getHubId(), e);
+            consumer.seek(new TopicPartition(record.topic(), record.partition()), record.offset());
+            pauseBeforeRetry();
+            return false;
+        }
+    }
+
+    private void pauseBeforeRetry() {
+        try {
+            Thread.sleep(properties.getRetryDelayMs());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            running = false;
         }
     }
 

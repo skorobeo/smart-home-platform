@@ -13,6 +13,7 @@ import java.util.Map;
 public class AnalyzerProperties {
 
     private String bootstrapServers = "localhost:9092";
+    private long retryDelayMs = 1000;
     private Topics topics = new Topics();
     private Consumer snapshotConsumer = new Consumer();
     private Consumer hubConsumer = new Consumer();

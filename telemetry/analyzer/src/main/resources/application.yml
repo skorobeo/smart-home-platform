@@ -27,6 +27,7 @@ grpc:
 analyzer:
   kafka:
     bootstrap-servers: localhost:9092
+    retry-delay-ms: 1000
     topics:
       snapshots: telemetry.snapshots.v1
       hubs: telemetry.hubs.v1

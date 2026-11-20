@@ -43,7 +43,11 @@ public class HubEventProcessor implements Runnable {
                 ConsumerRecords<String, HubEventAvro> records = consumer.poll(
                         Duration.ofMillis(properties.getHubConsumer().getPollTimeout()));
                 for (ConsumerRecord<String, HubEventAvro> record : records) {
-                    process(record);
+                    if (!process(record)) {
+                        // Не фиксируем смещение и прерываем обработку батча:
+                        // после seek следующая итерация poll снова получит это событие.
+                        break;
+                    }
                 }
             }
         } catch (WakeupException e) {
@@ -63,11 +67,11 @@ public class HubEventProcessor implements Runnable {
         }
     }
 
-    private void process(ConsumerRecord<String, HubEventAvro> record) {
+    private boolean process(ConsumerRecord<String, HubEventAvro> record) {
         HubEventAvro event = record.value();
         if (event == null) {
             commit(record);
-            return;
+            return true;
         }
 
         try {
@@ -82,12 +86,24 @@ public class HubEventProcessor implements Runnable {
                         scenarioService.removeScenario(event.getHubId(), scenarioRemoved.getName());
                 default -> log.warn("Неизвестный тип события хаба {}", event.getPayload());
             }
-        } catch (Exception e) {
-            log.error("Не удалось обработать событие хаба {}", event.getHubId(), e);
-        } finally {
-            // События хабов повторно обрабатывать не опасно, но и задерживать их
-            // в очереди нет смысла: операции добавления и удаления идемпотентны.
             commit(record);
+            return true;
+        } catch (Exception e) {
+            log.error("Не удалось обработать событие хаба {}. "
+                    + "Смещение не фиксируется, событие будет обработано повторно",
+                    event.getHubId(), e);
+            consumer.seek(new TopicPartition(record.topic(), record.partition()), record.offset());
+            pauseBeforeRetry();
+            return false;
+        }
+    }
+
+    private void pauseBeforeRetry() {
+        try {
+            Thread.sleep(properties.getRetryDelayMs());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            running = false;
         }
     }
 
